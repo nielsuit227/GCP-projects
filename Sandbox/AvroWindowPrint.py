@@ -39,29 +39,30 @@ def DataProducer(avroReader, devices=5, samples=100):
     data = []
     for sample in range(samples):
         for device in range(devices):
-            mess = {
+            message = {
                 'id': device,
                 'ts': int(time.time() + sample),
+                'sensor1': np.random.rand(),
+                'sensor2': np.random.rand()
             }
-            for i in range(FEATURES):
-                mess['sensornamejadajada' + str(i)] = np.random.rand()
+            data.append(
+                avroReader.encode(message)
+            )
     return data
 
 
 fields = [
     {'name': 'id', 'type': 'int'},
-    {'name': 'ts', 'type': 'int'}
+    {'name': 'ts', 'type': 'int'},
+    {'name': 'sensor1', 'type': 'float'},
+    {'name': 'sensor2', 'type': 'float'}
 ]
-for i in range(FEATURES):
-    fields.append({'name': 'sensornamejadajada' + str(i), 'type': 'float'})
-schema = parse_schema(
-    {
-        'type': 'record',
-        'namespace': 'AmploAmbibox',
-        'name': 'sample',
-        'fields': fields
-    }
-)
+schema = parse_schema({
+    'type': 'record',
+    'namespace': 'AmploAmbibox',
+    'name': 'sample',
+    'fields': fields
+})
 avroReader = AvroReader(schema)
 data = DataProducer(avroReader)
 pipeline_options = PipelineOptions(streaming=True)

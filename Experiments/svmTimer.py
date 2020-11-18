@@ -11,7 +11,7 @@ input, output = datasets.make_classification(
     n_samples=400
 )
 model = svm.SVC(kernel='rbf').fit(input, output)
-joblib.dump(model, 'svmtimer.joblib')
+joblib.dump(model, '../svmtimer.joblib')
 
 
 

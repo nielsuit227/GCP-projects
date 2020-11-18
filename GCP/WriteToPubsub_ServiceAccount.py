@@ -1,9 +1,5 @@
 import time, io
-import avro.schema, avro.io
-import numpy as np
-from datetime import datetime
 from google.cloud import pubsub
-from apscheduler.schedulers.background import BackgroundScheduler
 from fastavro import parse_schema, schemaless_reader, schemaless_writer
 
 
