@@ -2,24 +2,25 @@ import io, logging, avro, joblib
 import apache_beam as beam
 from fastavro import schemaless_reader, parse_schema
 from apache_beam.io import ReadFromPubSub
-from apache_beam.transforms import window
 from apache_beam.options.pipeline_options import PipelineOptions
 
 logging.getLogger().setLevel(logging.INFO)
+fields = [
+    {'name': 'id', 'type': 'int'},
+    {'name': 'ts', 'type': 'int'},
+]
+for i in range(50):
+    fields.append({'name': 'sensorname' + str(i), 'type': 'float'})
 raw_schema = {
     'type': 'record',
-    'namespace': 'AvroPubSubPrint',
+    'namespace': 'AvroPredict',
     'name': 'Entity',
-    'fields': [
-        {"name": "id", "type": "int"},
-        {"name": "ts", "type": "int"},
-        {"name": "sensor1", "type": ["float", "null"]},
-        {"name": "sensor2", "type": ["float", "null"]}
-    ]
+    'fields': fields
 }
 PRJCT = 'archtrial'
 TPC = "dataTopic"
 topic_url = 'projects/{project}/topics/{topic}'.format(project=PRJCT, topic=TPC)
+model_url = 'gs://dataflow-testing-42/models/svmtest.joblib'
 buffer = 30
 
 
@@ -38,45 +39,33 @@ class AvroReader:
         bytes = io.BytesIO(record)
         return schemaless_reader(bytes, self.schema)
 
-    def deserialize(self, record):
-        bytes = io.BytesIO(record)
-        binary = avro.io.BinaryDecoder(bytes)
-        return self.reader.read(binary)
-
 
 class Predict(beam.DoFn):
-    def __init__(self,
-                 model_dir):
+    def __init__(self, model_dir):
         self.model_dir = model_dir
         self.session = None
 
-    def process(self, inputs):
+    def process(self, element):
         if not self.session:
             self.session = joblib.load(self.model_dir)
-        feed_dict = {
-            tensor: [inputs[key]]
-            for key, tensor in self.feed_tensors.items()
-            if key in inputs
-        }
-        results = self.session.run(self.fetch_tensors, feed_dict)
-
+        id, ts, feed = element
+        results = self.session.decision_function([feed])[0]
         yield {
-            'id': inputs[self.id_key],
-            'predictions': results[self.meta_predictions][0].tolist()
+            'id': id,
+            'ts': ts,
+            'prediction': results.tolist()
         }
 
 
 class Format(beam.DoFn):
     def process(self, element):
         devId, devData = element
-        devData.sort(key=lambda item: item['ts'])
-        sensor1 = [x['sensor1'] for x in devData]
-        sensor2 = [x['sensor2'] for x in devData]
-        yield {
-            'id': devId,
-            'sensor1': sensor1,
-            'sensor2': sensor2
-        }
+        yield (
+            devId,
+            devData['ts'],
+            [devData[key] for key in devData.keys()
+             if key not in ['id', 'ts']]
+        )
 
 
 def run(arv=None, save_main_session=True):
@@ -90,7 +79,6 @@ def run(arv=None, save_main_session=True):
         streaming=True,
         save_main_session=save_main_session,
     )
-    job_options = pipeline_options.view_as(JobOptions)
 
     p = beam.Pipeline(options=pipeline_options)
 
@@ -100,11 +88,8 @@ def run(arv=None, save_main_session=True):
             p
             | 'Read' >> ReadFromPubSub(topic=topic_url).with_output_types(bytes)
             | 'Deserialize' >> beam.Map(lambda input: avroR.decode(input))
-            | 'Add Timestamp' >> beam.Map(lambda x: window.TimestampedValue(x, x['ts']))
-            # | 'Window' >> beam.WindowInto(beam.transforms.window.SlidingWindows(size=10, period=1))
-            | 'Group' >> beam.GroupBy(lambda elem: elem['id'])
             | 'Format' >> beam.ParDo(Format())
-        # Need a sorting too...
+            | 'Predict' >> beam.ParDo(Predict(model_url))
     )
     new_lines | 'Print' >> beam.Map(logging.info)
 

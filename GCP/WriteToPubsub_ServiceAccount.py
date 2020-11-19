@@ -1,6 +1,7 @@
 import time, io
+import numpy as np
 from google.cloud import pubsub
-from fastavro import parse_schema, schemaless_reader, schemaless_writer
+from fastavro import parse_schema, schemaless_writer
 
 
 def publishData(devices=10, sample=0):
@@ -10,9 +11,9 @@ def publishData(devices=10, sample=0):
         print('New sample for device %i' % i)
         message = {
             'id': i,
-            'ts': int(time.time()),
-            'sensor1': i + 0.01 * sample,
-            'sensor2': i + 0.01 * sample}
+            'ts': int(time.time())}
+        for i in range(50):
+            message['sensorname' + str(i)] = np.random.rand()
         bytes_writer = io.BytesIO()
         schemaless_writer(bytes_writer, schema, message)
         publisher.publish(topic_url, bytes_writer.getvalue())
@@ -21,7 +22,7 @@ def publishData(devices=10, sample=0):
 # parameters
 fields = []
 for i in range(50):
-    fields.append({'name': str(i), 'type': 'float'})
+    fields.append({'name': 'sensorname' + str(i), 'type': 'float'})
 DEVS = 5
 PROJECT = 'archtrial'
 TOPIC = 'dataTopic'
@@ -41,4 +42,3 @@ topic_url = 'projects/{project}/topics/{topic}'.format(project=PROJECT, topic=TO
 # Scheduler
 for i in range(30 * 60):
     publishData(devices=2000, sample=i)
-    # time.sleep(1)
