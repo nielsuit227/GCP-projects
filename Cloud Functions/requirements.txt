@@ -1,0 +1,5 @@
+flask==1.1.2
+google-cloud-error-reporting==1.0.0
+sqlalchemy
+datetime
+pg8000<=1.16.5
