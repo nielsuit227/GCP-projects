@@ -35,59 +35,62 @@ def to_postgres(event, context):
         data['start'] = datetime.fromtimestamp(float(data['start']))
         data['end'] = datetime.fromtimestamp(float(data['end']))
         print(data)
-        # Connection
-        DB_USER = os.environ.get('DB_USER')
-        DB_PASS = os.environ.get('DB_PASS')
-        DB_NAME = os.environ.get('DB_NAME')
-        DB_CONN = os.environ.get('DB_CONN')
-        engine = sqlalchemy.create_engine(
-            sqlalchemy.engine.url.URL(
-                drivername="postgresql+pg8000",
-                username=DB_USER,
-                password=DB_PASS,
-                database=DB_NAME,
-                query={
-                    "unix_sock": "/cloudsql/{}/.s.PGSQL.5432".format(DB_CONN)
-                }
+        if data['quantity'] != 0:
+            # Connection
+            DB_USER = os.environ.get('DB_USER')
+            DB_PASS = os.environ.get('DB_PASS')
+            DB_NAME = os.environ.get('DB_NAME')
+            DB_CONN = os.environ.get('DB_CONN')
+            engine = sqlalchemy.create_engine(
+                sqlalchemy.engine.url.URL(
+                    drivername="postgresql+pg8000",
+                    username=DB_USER,
+                    password=DB_PASS,
+                    database=DB_NAME,
+                    query={
+                        "unix_sock": "/cloudsql/{}/.s.PGSQL.5432".format(DB_CONN)
+                    }
+                )
             )
-        )
-        if type(engine) == 'str':
-            print(engine)
-        connection = engine.connect()
+            if type(engine) == 'str':
+                print(engine)
+            connection = engine.connect()
 
-        # Check Order id, start_ts
-        query = 'SELECT id, actual_start, progress FROM app_order WHERE riga={}'.format(data['order'])
-        orderQuery = connection.execute(query)
-        result = orderQuery.fetchall()
+            # Check Order id, start_ts
+            query = 'SELECT id, actual_start, progress FROM app_order WHERE riga={}'.format(data['order'])
+            orderQuery = connection.execute(query)
+            result = orderQuery.fetchall()
 
-        # Create Order if it doesn't exist
-        if len(result) == 0:
-            # Find max id
-            query = connection.execute("SELECT MAX(id) FROM app_order;")
-            order_id = query.fetchall()[0][0] + 1
-            # Insert new order
-            query = "INSERT INTO app_order (id, riga, status, priority, actual_start, actual_end, progress, suit_id) VALUES ({}, {}, 2, 2, '{}', '{}', {}, {})" \
-                .format(order_id, data['order'], data['start'], data['end'], data['quantity'], data['suit'])
-            connection.execute(query)
-
-        # Update existing order
-        else:
-            order_id, order_start, progress = result[0]
-            # Add actual start
-            if order_start == None:
-                query = "UPDATE app_order SET actual_start='{}', actual_end='{}', progress={} where id={}".format(
-                    data['start'], data['end'], progress + int(data['quantity']), order_id)
+            # Create Order if it doesn't exist
+            if len(result) == 0:
+                # Find max id
+                query = connection.execute("SELECT MAX(id) FROM app_order;")
+                order_id = query.fetchall()[0][0] + 1
+                # Insert new order
+                query = "INSERT INTO app_order (id, riga, status, priority, actual_start, actual_end, progress, suit_id) VALUES ({}, {}, 2, 2, '{}', '{}', {}, {})" \
+                    .format(order_id, data['order'], data['start'], data['end'], data['quantity'], data['suit'])
                 connection.execute(query)
-            # Or let it remain if it's already there
+
+            # Update existing order
             else:
-                query = "UPDATE app_order SET actual_end='{}', progress={} where id={}".format(
-                    data['end'], progress + int(data['quantity']), order_id)
-                connection.execute(query)
+                order_id, order_start, progress = result[0]
+                # Add actual start
+                if order_start == None:
+                    query = "UPDATE app_order SET actual_start='{}', actual_end='{}', progress={} where id={}".format(
+                        data['start'], data['end'], progress + int(data['quantity']), order_id)
+                    connection.execute(query)
+                # Or let it remain if it's already there
+                else:
+                    query = "UPDATE app_order SET actual_end='{}', progress={} where id={}".format(
+                        data['end'], progress + int(data['quantity']), order_id)
+                    connection.execute(query)
 
-        # Add event
-        query = "INSERT INTO app_event (start_ts, end_ts, employee_id, task_id, quantity, order_id) VALUES ('{}', '{}', '{}', '{}', {}, {})" \
-            .format(data['start'], data['end'], data['employee'], data['task'], data['quantity'], order_id)
-        connection.execute(query)
+            # Add event
+            query = "INSERT INTO app_event (start_ts, end_ts, employee_id, task_id, quantity, order_id) VALUES ('{}', '{}', '{}', '{}', {}, {})" \
+                .format(data['start'], data['end'], data['employee'], data['task'], data['quantity'], order_id)
+            connection.execute(query)
+        else:
+            print('Zero entered, disregarded.')
     except Exception as e:
         exc_type, exc_obj, tb = sys.exc_info()
         print(tb.tb_lineno)
