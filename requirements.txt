@@ -1,0 +1,11 @@
+google-cloud-aiplatform
+fastavro
+avro
+apache_beam
+flask
+sqlalchemy
+jwt
+joblib
+sklearn
+
+
