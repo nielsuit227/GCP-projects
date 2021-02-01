@@ -8,4 +8,5 @@ try:
     destination.upload_from_filename('data.json')
     print('File uploaded.')
 except Exception as e:
+    print('Do not run within PyCharm. Ensure Environmental Variable is set.')
     print(e)
