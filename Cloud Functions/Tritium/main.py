@@ -1,4 +1,5 @@
 import json, joblib, pickle, cantools, re
+import numpy as np
 import pandas as pd
 from google.cloud import storage
 
@@ -15,11 +16,11 @@ api_key = 'ya29.a0AfH6SMAzzvEoeIvYmyL4J66QHU6ES_-K37sDVF4QNeDmEiA2xXonRi4lRM0Qz0
 
 
 def load_file(file_loc):
-    '''
+    """
     Loads file from storage bucket into local memory.
-    :param file_loc: String with file location in project folder. 
+    :param file_loc: String with file location in project folder.
     :return:
-    '''
+    """
     global error_message, bucket, project
     # Connect
     client = storage.Client()
@@ -40,13 +41,10 @@ def load_file(file_loc):
 
 
 def predict_iso(request):
-    '''
+    """
     Automated Diagnostics API for Tritium.
     Triggered with HTTPS Post. Requires API key for authentication and csv for prediction.
-
-    :param request:
-    :return:
-    '''
+    """
     global model, features, normalization, dbc, api_key, error_message
 
     # Checks
@@ -104,10 +102,6 @@ def predict_iso(request):
         print(e)
         return error_message
 
-    # Decoded data check
-    if not set(features).issubset(set(data.keys())):
-        return 'Required features for prediction missing, please contact info@amplo.ch'
-
     # Convert to timeseries
     try:
         data = data.set_index(pd.to_datetime(data['ts']))
@@ -131,6 +125,19 @@ def predict_iso(request):
         print(e)
         return error_message
 
+    # Categorical Variables
+    try:
+        for i in range(4):
+            key = 'chargererrorevent%i' % (i + 1)
+            dummies = pd.get_dummies(data[key])
+            for dummy_key in dummies.keys():
+                dummies = dummies.rename(columns={dummy_key: key + '_' + str(dummy_key)})
+            data = data.drop(key, axis=1).join(dummies)
+    except Exception as e:
+        print('Categorical Variables Failed')
+        print(e)
+        return error_message
+
     # Normalizing
     try:
         data = normalization.convert(data)
@@ -139,8 +146,14 @@ def predict_iso(request):
         print(e)
         return error_message
 
+    # Decoded data check
+    if not set(features).issubset(set(data.keys())):
+        return 'Required features for prediction missing, please contact info@amplo.ch'
+
     # Select features
     try:
+        for key in [x for x in features if x not in list(data.keys())]:
+            data.loc[:, key] = np.zeros(len(data))
         data = data[features]
     except Exception as e:
         print('Selecting features failed.')
@@ -150,7 +163,7 @@ def predict_iso(request):
     # Making predictions
     try:
         predictions = model.decision_function(data.iloc[1:])
-        return 'Probability of faulty ISO Board: %.2f %%' % (sum(predictions) / len(predictions) * 50 + 50)
+        return 'Probability of faulty ISO Board: %.2f %%' % min(100, max(0, (sum(predictions) / len(predictions) * 50 + 50)))
     except Exception as e:
         print('Making predictions failed.')
         print(e)
