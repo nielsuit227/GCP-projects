@@ -2,6 +2,8 @@ import sys
 from flask import escape
 
 
+api_key = 'ya29.a0AfH6SMAzzvEoeIvYmyL4J66QHU6ES_-K37sDVF4QNeDmEiA2xXonRi4lRM0Qz0UDW4rCucL775TNGqS__JGXvO3zF7UYdCvqAf6Ahcoxwf5DzJVzSkbQrW68sewDmoPUD1tIiJfCCrbszfEcXbMPi_IniYEsFuKRpzmCCDd9o0U'
+
 # [START functions_helloworld_pubsub]
 def hello_pubsub(event, context):
     """Background Cloud Function to be triggered by Pub/Sub.
@@ -26,7 +28,89 @@ def hello_pubsub(event, context):
 # [END functions_helloworld_pubsub]
 
 
+def from_csv(request):
+    '''
+    Print the headers of a csv.
+    :param request: HTTPS Post CSV
+    :return: Headers of attached Csv
+    '''
+    import pandas as pd
+
+    print(request.files)
+    print(request.file.get('file'))
+    if 'file' not in request.files: print('No file found')
+
+    if request.method == 'POST':
+        try:
+            df = pd.read_csv(request.files.get('file'))
+            return str(df.keys())
+        except:
+            return 'No file found.'
+    else:
+        return 'Please use POST.'
+
+
+def from_csv_with_apikey(request):
+    '''
+    Print the headers of a csv, secured with an API_Key.
+    :param request: HTTPS Post CSV
+    :return: Headers of attached Csv
+    '''
+    import pandas as pd
+
+    # Checks
+    if request.method != 'POST': return 'Please use HTTPS POST.'
+    if 'X-API-Key' not in request.headers: return 'Please provide X-API-Key.'
+    if request.headers['X-API-Key'] != api_key: return 'Incorrect API Key.'
+
+    try:
+        df = pd.read_csv(request.files.get('file'))
+        return str(df.keys())
+    except:
+        return 'No file found.'
+
+
+
+def from_storage(request):
+    '''
+    Prints some data from a storage file. Requires both the deploying and hosting service account
+    to have Storage View rights.
+    :param request:
+    :return:
+    '''
+    import json
+    from google.cloud import storage
+
+    client = storage.Client(project='amplo-301021')
+    try:
+        bucket = client.get_bucket('amplo-storage')
+        try:
+            blob = bucket.blob('Hello_World.json')
+            data = json.loads(blob.download_as_string())
+            return data
+        except Exception as e:
+            print('Error loading file:')
+            print(e)
+    except Exception as e:
+        print('Bucket not found.')
+        print(e)
+
+
+
 def to_postgres(event, context):
+    '''
+    Function for Responder. Parses a log send by the Android Application and writes to the
+    dbs in GKE.
+    - Zero logs are disregarded.
+    - Riga is checked for existance.
+    - If it doesn't exist, riga is created.
+    - If the order didn't have an actual_start, it's added.
+    - The orders actual_end is updated.
+    - Event is added
+    :param event: The HTTPS POST.
+    :param context: Unused
+    :return: Nothing.
+    '''
     import base64, sqlalchemy, os, sys
     from datetime import datetime
     try:

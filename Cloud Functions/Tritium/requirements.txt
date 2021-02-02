@@ -1,0 +1,6 @@
+sklearn==0.23.2
+google-cloud-storage
+flask
+pandas==1.2.1
+joblib
+cantools==36.0.0

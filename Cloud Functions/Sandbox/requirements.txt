@@ -4,3 +4,4 @@ google-cloud-error-reporting==1.0.0
 sqlalchemy
 datetime
 pg8000<=1.16.5
+pandas==1.2.1
