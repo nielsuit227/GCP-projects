@@ -15,6 +15,11 @@ api_key = 'ya29.a0AfH6SMAzzvEoeIvYmyL4J66QHU6ES_-K37sDVF4QNeDmEiA2xXonRi4lRM0Qz0
 
 
 def load_file(file_loc):
+    '''
+    Loads file from storage bucket into local memory.
+    :param file_loc: String with file location in project folder. 
+    :return:
+    '''
     global error_message, bucket, project
     # Connect
     client = storage.Client()
