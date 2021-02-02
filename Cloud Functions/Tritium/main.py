@@ -14,38 +14,34 @@ api_key = 'ya29.a0AfH6SMAzzvEoeIvYmyL4J66QHU6ES_-K37sDVF4QNeDmEiA2xXonRi4lRM0Qz0
           '6Ahcoxwf5DzJVzSkbQrW68sewDmoPUD1tIiJfCCrbszfEcXbMPi_IniYEsFuKRpzmCCDd9o0U'
 
 
-def download_blob(bucket_name, source, destination):
-    global error_message
+def load_file(file_loc):
+    global error_message, bucket, project
     # Connect
     client = storage.Client()
     try:
-        bucket_class = client.get_bucket(bucket_name)
+        bucket_class = client.get_bucket(bucket)
     except Exception as e:
-        print('Connecting to bucket %s went wrong.' % bucket)
+        print('Connecting to bucket %s failed.' % bucket)
         print(e)
         return error_message
     # Get file
     try:
-        blob = bucket_class.blob(source)
-        blob.download_to_filename(destination)
+        blob = bucket_class.blob(project + file_loc)
+        blob.download_to_filename('/tmp/' + file_loc)
     except Exception as e:
-        print('Downloading %s to %s went wrong' % source, destination)
-        print(e)
-        return error_message
-
-
-
-def load_file(file):
-    global error_message, bucket, project
-    try:
-        download_blob(bucket, project + file, '/tmp/' + file)
-    except Exception as e:
-        print('Could load file %s' % file)
+        print('Loading %s into memory failed.' % file_loc)
         print(e)
         return error_message
 
 
 def predict_iso(request):
+    '''
+    Automated Diagnostics API for Tritium.
+    Triggered with HTTPS Post. Requires API key for authentication and csv for prediction.
+
+    :param request:
+    :return:
+    '''
     global model, features, normalization, dbc, api_key, error_message
 
     # Checks
@@ -122,7 +118,7 @@ def predict_iso(request):
     try:
         new_keys = {}
         for key in data.keys():
-            new_keys[key] = re.sub('[^a-zA-Z0-9 \n\.]', '_', key.lower())
+            new_keys[key] = re.sub('[^a-zA-Z0-9]', '_', key.lower())
         data = data.rename(columns=new_keys)
         data = data.loc[:, ~data.columns.duplicated()]
     except Exception as e:
