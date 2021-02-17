@@ -1,6 +1,7 @@
 flask==1.1.2
 google-cloud-storage==1.35.0
 google-cloud-error-reporting==1.0.0
+google-cloud-secret-manager==2.2.0
 sqlalchemy
 datetime
 pg8000<=1.16.5

@@ -1,33 +1,38 @@
-import io, logging, avro, joblib
+import io
+import logging
+import os
+
 import apache_beam as beam
-from fastavro import schemaless_reader, parse_schema
+import avro
+import joblib
 from apache_beam.io import ReadFromPubSub
 from apache_beam.options.pipeline_options import PipelineOptions
+from fastavro import parse_schema, schemaless_reader
 
 logging.getLogger().setLevel(logging.INFO)
 fields = [
-    {'name': 'id', 'type': 'int'},
-    {'name': 'ts', 'type': 'int'},
+    {"name": "id", "type": "int"},
+    {"name": "ts", "type": "int"},
 ]
 for i in range(50):
-    fields.append({'name': 'sensorname' + str(i), 'type': 'float'})
+    fields.append({"name": "sensorname" + str(i), "type": "float"})
 raw_schema = {
-    'type': 'record',
-    'namespace': 'AvroPredict',
-    'name': 'Entity',
-    'fields': fields
+    "type": "record",
+    "namespace": "AvroPredict",
+    "name": "Entity",
+    "fields": fields,
 }
-PRJCT = 'archtrial'
-TPC = "dataTopic"
-topic_url = 'projects/{project}/topics/{topic}'.format(project=PRJCT, topic=TPC)
-model_url = 'gs://dataflow-testing-42/models/svmtest.joblib'
+PRJCT = os.getenv("GCP_PROJECT")
+TPC = os.getenv("GCP_DATAFLOW_TOPIC")
+topic_url = "projects/{project}/topics/{topic}".format(project=PRJCT, topic=TPC)
+model_url = os.getenv("GCP_DATAFLOW_MODEL_URL")
 buffer = 30
 
 
 class JobOptions(PipelineOptions):
     @classmethod
     def _add_argparse_args(cls, parser):
-        parser.add_value_provider_argument('--welcome', type=str)
+        parser.add_value_provider_argument("--welcome", type=str)
 
 
 class AvroReader:
@@ -50,11 +55,7 @@ class Predict(beam.DoFn):
             self.session = joblib.load(self.model_dir)
         id, ts, feed = element
         results = self.session.decision_function([feed])[0]
-        yield {
-            'id': id,
-            'ts': ts,
-            'prediction': results.tolist()
-        }
+        yield {"id": id, "ts": ts, "prediction": results.tolist()}
 
 
 class Format(beam.DoFn):
@@ -62,20 +63,19 @@ class Format(beam.DoFn):
         devId, devData = element
         yield (
             devId,
-            devData['ts'],
-            [devData[key] for key in devData.keys()
-             if key not in ['id', 'ts']]
+            devData["ts"],
+            [devData[key] for key in devData.keys() if key not in ["id", "ts"]],
         )
 
 
 def run(arv=None, save_main_session=True):
     pipeline_options = PipelineOptions(
-        runner='DataflowRunner',
+        runner="DataflowRunner",
         numWorkers=12,
         project=PRJCT,
-        job_name='printtemplate01',
-        temp_location='gs://dataflow-testing-42/temp',
-        region='us-central1',
+        job_name="printtemplate01",
+        temp_location="gs://dataflow-testing-42/temp",
+        region="us-central1",
         streaming=True,
         save_main_session=save_main_session,
     )
@@ -85,18 +85,17 @@ def run(arv=None, save_main_session=True):
     schema = parse_schema(raw_schema)
     avroR = AvroReader(schema)
     new_lines = (
-            p
-            | 'Read' >> ReadFromPubSub(topic=topic_url).with_output_types(bytes)
-            | 'Deserialize' >> beam.Map(lambda input: avroR.decode(input))
-            | 'Format' >> beam.ParDo(Format())
-            | 'Predict' >> beam.ParDo(Predict(model_url))
+        p
+        | "Read" >> ReadFromPubSub(topic=topic_url).with_output_types(bytes)
+        | "Deserialize" >> beam.Map(lambda input: avroR.decode(input))
+        | "Format" >> beam.ParDo(Format())
+        | "Predict" >> beam.ParDo(Predict(model_url))
     )
-    new_lines | 'Print' >> beam.Map(logging.info)
+    new_lines | "Print" >> beam.Map(logging.info)
 
     result = p.run()
     result.wait_until_finish()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run()
-

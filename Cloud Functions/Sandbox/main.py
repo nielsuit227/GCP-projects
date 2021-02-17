@@ -1,8 +1,6 @@
-import sys
-from flask import escape
+import os
 
-
-api_key = 'ya29.a0AfH6SMAzzvEoeIvYmyL4J66QHU6ES_-K37sDVF4QNeDmEiA2xXonRi4lRM0Qz0UDW4rCucL775TNGqS__JGXvO3zF7UYdCvqAf6Ahcoxwf5DzJVzSkbQrW68sewDmoPUD1tIiJfCCrbszfEcXbMPi_IniYEsFuKRpzmCCDd9o0U'
+api_key = os.getenv("apikey")
 
 # [START functions_helloworld_pubsub]
 def hello_pubsub(event, context):
@@ -17,88 +15,124 @@ def hello_pubsub(event, context):
     """
     import base64
 
-    print("""This Function was triggered by messageId {} published at {}
-    """.format(context.event_id, context.timestamp))
+    print(
+        """This Function was triggered by messageId {} published at {}
+    """.format(
+            context.event_id, context.timestamp
+        )
+    )
 
-    if 'data' in event:
-        name = base64.b64decode(event['data']).decode('utf-8')
+    if "data" in event:
+        name = base64.b64decode(event["data"]).decode("utf-8")
     else:
-        name = 'World'
-    print('Hello {}!'.format(name))
+        name = "World"
+    print("Hello {}!".format(name))
+
+
 # [END functions_helloworld_pubsub]
 
 
+def to_storage(request):
+    from google.cloud import storage
+
+    client = storage.Client(project="amplo-301021")
+    try:
+        bucket = client.get_bucket("amplo-storage")
+        blob = bucket.blob("/tritium/logs/file.csv")
+        blob.upload_from_string(request.data.decode("utf-8"), content_type="text/csv")
+    except Exception as e:
+        print(e)
+        return "error."
+
+
+def from_cgsm(request):
+    from google.cloud import secretmanager
+
+    project = os.getenv("CGSM_PROJECT")
+    secret = os.getenv("CGSM_SECRET")
+    client = secretmanager.SecretManagerServiceClient()
+    response = client.access_secret_version(
+        request={
+            "name": "projects/{}/secrets/{}/versions/latest".format(project, secret)
+        }
+    )
+    return response.payload.data.decode("utf-8")
+
+
 def from_csv(request):
-    '''
+    """
     Print the headers of a csv.
     :param request: HTTPS Post CSV
     :return: Headers of attached Csv
-    '''
+    """
     import pandas as pd
 
     print(request.files)
-    print(request.file.get('file'))
-    if 'file' not in request.files: print('No file found')
+    print(request.file.get("file"))
+    if "file" not in request.files:
+        print("No file found")
 
-    if request.method == 'POST':
+    if request.method == "POST":
         try:
-            df = pd.read_csv(request.files.get('file'))
+            df = pd.read_csv(request.files.get("file"))
             return str(df.keys())
         except:
-            return 'No file found.'
+            return "No file found."
     else:
-        return 'Please use POST.'
+        return "Please use POST."
 
 
 def from_csv_with_apikey(request):
-    '''
+    """
     Print the headers of a csv, secured with an API_Key.
     :param request: HTTPS Post CSV
     :return: Headers of attached Csv
-    '''
+    """
     import pandas as pd
 
     # Checks
-    if request.method != 'POST': return 'Please use HTTPS POST.'
-    if 'X-API-Key' not in request.headers: return 'Please provide X-API-Key.'
-    if request.headers['X-API-Key'] != api_key: return 'Incorrect API Key.'
+    if request.method != "POST":
+        return "Please use HTTPS POST."
+    if "X-API-Key" not in request.headers:
+        return "Please provide X-API-Key."
+    if request.headers["X-API-Key"] != api_key:
+        return "Incorrect API Key."
 
     try:
-        df = pd.read_csv(request.files.get('file'))
+        df = pd.read_csv(request.files.get("file"))
         return str(df.keys())
     except:
-        return 'No file found.'
-
+        return "No file found."
 
 
 def from_storage(request):
-    '''
+    """
     Prints some data from a storage file. Requires both the deploying and hosting service account
     to have Storage View rights.
     :param request:
     :return:
-    '''
+    """
     import json
+
     from google.cloud import storage
 
-    client = storage.Client(project='amplo-301021')
+    client = storage.Client(project="amplo-301021")
     try:
-        bucket = client.get_bucket('amplo-storage')
+        bucket = client.get_bucket("amplo-storage")
         try:
-            blob = bucket.blob('Hello_World.json')
+            blob = bucket.blob("Hello_World.json")
             data = json.loads(blob.download_as_string())
             return data
         except Exception as e:
-            print('Error loading file:')
+            print("Error loading file:")
             print(e)
     except Exception as e:
-        print('Bucket not found.')
+        print("Bucket not found.")
         print(e)
 
 
-
 def to_postgres(event, context):
-    '''
+    """
     Function for Responder. Parses a log send by the Android Application and writes to the
     dbs in GKE.
     - Zero logs are disregarded.
@@ -110,38 +144,45 @@ def to_postgres(event, context):
     :param event: The HTTPS POST.
     :param context: Unused
     :return: Nothing.
-    '''
-    import base64, sqlalchemy, os, sys
+    """
+    import base64
+    import os
+    import sys
     from datetime import datetime
+
+    import sqlalchemy
+
     try:
-        json_string = base64.b64decode(event['data']).decode('utf-8')[1:-1]
-        data = {i.split(': ')[0]: i.split(': ')[1] for i in json_string.split(', ')}
-        data['start'] = datetime.fromtimestamp(float(data['start']))
-        data['end'] = datetime.fromtimestamp(float(data['end']))
+        json_string = base64.b64decode(event["data"]).decode("utf-8")[1:-1]
+        data = {i.split(": ")[0]: i.split(": ")[1] for i in json_string.split(", ")}
+        data["start"] = datetime.fromtimestamp(float(data["start"]))
+        data["end"] = datetime.fromtimestamp(float(data["end"]))
         print(data)
-        if data['quantity'] != 0:
+        if data["quantity"] != 0:
             # Connection
-            DB_USER = os.environ.get('DB_USER')
-            DB_PASS = os.environ.get('DB_PASS')
-            DB_NAME = os.environ.get('DB_NAME')
-            DB_CONN = os.environ.get('DB_CONN')
+            DB_USER = os.environ.get("DB_USER")
+            DB_PASS = os.environ.get("DB_PASS")
+            DB_NAME = os.environ.get("DB_NAME")
+            DB_CONN = os.environ.get("DB_CONN")
             engine = sqlalchemy.create_engine(
                 sqlalchemy.engine.url.URL(
                     drivername="postgresql+pg8000",
                     username=DB_USER,
                     password=DB_PASS,
                     database=DB_NAME,
-                    query={
-                        "unix_sock": "/cloudsql/{}/.s.PGSQL.5432".format(DB_CONN)
-                    }
+                    query={"unix_sock": "/cloudsql/{}/.s.PGSQL.5432".format(DB_CONN)},
                 )
             )
-            if type(engine) == 'str':
+            if type(engine) == "str":
                 print(engine)
             connection = engine.connect()
 
             # Check Order id, start_ts
-            query = 'SELECT id, actual_start, progress FROM app_order WHERE riga={}'.format(data['order'])
+            query = (
+                "SELECT id, actual_start, progress FROM app_order WHERE riga={}".format(
+                    data["order"]
+                )
+            )
             orderQuery = connection.execute(query)
             result = orderQuery.fetchall()
 
@@ -151,8 +192,14 @@ def to_postgres(event, context):
                 query = connection.execute("SELECT MAX(id) FROM app_order;")
                 order_id = query.fetchall()[0][0] + 1
                 # Insert new order
-                query = "INSERT INTO app_order (id, riga, status, priority, actual_start, actual_end, progress, suit_id) VALUES ({}, {}, 2, 2, '{}', '{}', {}, {})" \
-                    .format(order_id, data['order'], data['start'], data['end'], data['quantity'], data['suit'])
+                query = "INSERT INTO app_order (id, riga, status, priority, actual_start, actual_end, progress, suit_id) VALUES ({}, {}, 2, 2, '{}', '{}', {}, {})".format(
+                    order_id,
+                    data["order"],
+                    data["start"],
+                    data["end"],
+                    data["quantity"],
+                    data["suit"],
+                )
                 connection.execute(query)
 
             # Update existing order
@@ -161,20 +208,31 @@ def to_postgres(event, context):
                 # Add actual start
                 if order_start == None:
                     query = "UPDATE app_order SET actual_start='{}', actual_end='{}', progress={} where id={}".format(
-                        data['start'], data['end'], progress + int(data['quantity']), order_id)
+                        data["start"],
+                        data["end"],
+                        progress + int(data["quantity"]),
+                        order_id,
+                    )
                     connection.execute(query)
                 # Or let it remain if it's already there
                 else:
                     query = "UPDATE app_order SET actual_end='{}', progress={} where id={}".format(
-                        data['end'], progress + int(data['quantity']), order_id)
+                        data["end"], progress + int(data["quantity"]), order_id
+                    )
                     connection.execute(query)
 
             # Add event
-            query = "INSERT INTO app_event (start_ts, end_ts, employee_id, task_id, quantity, order_id) VALUES ('{}', '{}', '{}', '{}', {}, {})" \
-                .format(data['start'], data['end'], data['employee'], data['task'], data['quantity'], order_id)
+            query = "INSERT INTO app_event (start_ts, end_ts, employee_id, task_id, quantity, order_id) VALUES ('{}', '{}', '{}', '{}', {}, {})".format(
+                data["start"],
+                data["end"],
+                data["employee"],
+                data["task"],
+                data["quantity"],
+                order_id,
+            )
             connection.execute(query)
         else:
-            print('Zero entered, disregarded.')
+            print("Zero entered, disregarded.")
     except Exception as e:
         exc_type, exc_obj, tb = sys.exc_info()
         print(tb.tb_lineno)

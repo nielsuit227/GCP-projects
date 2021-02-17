@@ -1,6 +1,8 @@
-import io, numpy, sys
-from fastavro import parse_schema, schemaless_writer, schemaless_reader
+import io
+import sys
 
+import numpy
+from fastavro import parse_schema, schemaless_reader, schemaless_writer
 
 FEATURES = 50
 
@@ -24,3 +26,4 @@ print(sys.getsizeof(encoded))
 
 bytes = io.BytesIO(encoded)
 print(schemaless_reader(bytes, schema))
+ 
